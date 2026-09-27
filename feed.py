@@ -45,7 +45,6 @@ class MarketDataFeed:
                 if missing:
                     raise ValueError(f"CSV does not contain the required columns: {sorted(missing)}")
             else: raise ValueError("CSV does not contain headers")
-            
 
             for row_number, row in enumerate(reader, start=2):
                 try:
