@@ -1,9 +1,10 @@
-import argparse
-import csv
-import time
 from datetime import datetime
 from pathlib import Path
 from pydantic import BaseModel
+
+import argparse
+import csv
+import time
 
 REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
@@ -16,10 +17,6 @@ class Candle(BaseModel):
     low: float
     close: float
     volume: int
-
-    # bar changes
-    bar_change: float
-    bar_change_pct: float
 
 class MarketDataFeed:
     """
@@ -74,19 +71,20 @@ class MarketDataFeed:
         return candles
 
     @staticmethod
-    def _emit(candle: Candle):
+    def _emit(candle: Candle, curr_bar, prev_bar):
         print(
-            f"{candle.timestamp} | "
-            f"O {candle.open:.2f} "
-            f"H {candle.high:.2f} "
-            f"L {candle.low:.2f} "
-            f"C {candle.close:.2f} "
-            f"V {candle.volume}"
+            f"{candle.timestamp} |  "
+            f"O {candle.open:8.2f} "
+            f"H {candle.high:8.2f} "
+            f"L {candle.low:8.2f} "
+            f"C {candle.close:8.2f} "
+            f"V {candle.volume:<6d} "
+            f" {curr_bar - prev_bar:+.2f} ({curr_bar / prev_bar - 1:+.2%})"
         )
 
     def replay(self):
         """
-        Replays 1m candles every `self.interval` seconds
+        Replays 1m candles every `self.interval` second/s
         """
         candles = self.load()
 
@@ -96,8 +94,10 @@ class MarketDataFeed:
         print("*** Starting market-data replay... ***")
         print()
 
-        for candle in candles:
-            self._emit(candle)
+        prev_candle = candles[0]
+        for candle in candles[1:]:
+            self._emit(candle, candle.close, prev_candle.close)
+            prev_candle = candle
             time.sleep(self.interval)
 
         print()
