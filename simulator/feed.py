@@ -1,22 +1,12 @@
 from datetime import datetime
 from pathlib import Path
-from pydantic import BaseModel
+from models import Candle
 
 import argparse
 import csv
 import time
 
 REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
-
-class Candle(BaseModel):
-    timestamp: datetime
-    
-    # OHLCV
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
 
 class MarketDataFeed:
     """
@@ -31,7 +21,7 @@ class MarketDataFeed:
         if not self.file_path.exists():
             raise FileNotFoundError(f"Cannot find file: {self.file_path}")
 
-    def load(self):
+    def load(self, symbol: str):
         """
         Loads candle data from `self.file_path`
         """
@@ -49,6 +39,7 @@ class MarketDataFeed:
             for row_number, row in enumerate(reader, start=2):
                 try:
                     candle = Candle(
+                        symbol=symbol,
                         timestamp=datetime.strptime(
                             row["timestamp"],
                             "%Y-%m-%d %H:%M:%S",
@@ -81,16 +72,16 @@ class MarketDataFeed:
             f" {curr_bar - prev_bar:+.2f} ({curr_bar / prev_bar - 1:+.2%})"
         )
 
-    def replay(self):
+    def replay(self, symbol: str):
         """
         Replays 1m candles every `self.interval` second/s
         """
-        candles = self.load()
+        candles = self.load(symbol)
 
         print(f"{len(candles)} total candles")
         print(f"Replay interval: {self.interval} seconds")
         print()
-        print("*** Starting market-data replay... ***")
+        print(f"*** Starting market-data replay for {symbol}... ***")
         print()
 
         prev_candle = candles[0]
@@ -106,9 +97,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", default="data/es_1m.csv", help="Path to the market-data CSV")
     parser.add_argument("--interval", type=float, default=1.0, help="Seconds between candles")
+    parser.add_argument("--symbol", default="FLOW", type=str)
 
     args = parser.parse_args()
-    file_path, interval = args.file, args.interval
+    file_path, interval, symbol = args.file, args.interval, args.symbol
 
     feed = MarketDataFeed(file_path=file_path, interval=interval)
-    feed.replay()
+    feed.replay(symbol)
