@@ -1,0 +1,135 @@
+from datetime import datetime
+from models import Candle
+from pathlib import Path
+
+import argparse
+import csv
+import os
+import psycopg2
+
+REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
+
+class CandleProcessor:
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+
+    def process(self, candle: Candle):
+        """
+        Processes and stores raw candle data in PSQL
+        """
+
+        query = """
+            INSERT INTO candles (symbol, timestamp, open, high, low, close, volume)
+            VALUES (
+                %(symbol)s,
+                %(timestamp)s,
+                %(open)s,
+                %(high)s,
+                %(low)s,
+                %(close)s,
+                %(volume)s
+            )
+            ON CONFLICT (symbol, timestamp)
+            DO UPDATE SET
+                open = EXCLUDED.open,
+                high = EXCLUDED.high,
+                low = EXCLUDED.low,
+                close = EXCLUDED.close,
+                volume = EXCLUDED.volume;
+        """
+
+        data = {
+            "symbol": candle.symbol,
+            "timestamp": candle.timestamp,
+            "open": candle.open,
+            "high": candle.high,
+            "low": candle.low,
+            "close": candle.close,
+            "volume": candle.volume,
+        }
+
+        with psycopg2.connect(self.database_url) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, data)
+
+            connection.commit()
+
+def load_csv(file_path: str, processor: CandleProcessor):
+        """
+        Loads candle data from `self.file_path`
+        """
+        processed_count = 0
+
+        with open(file_path, "r", newline="") as file:
+            reader = csv.DictReader(file)
+
+            symbol = Path(file_path).stem.upper()
+
+            if reader.fieldnames:
+                missing = REQUIRED_DATA_COLUMNS - set(reader.fieldnames)
+                if missing:
+                    raise ValueError(f"Missing required columns: {sorted(missing)}")
+            else: raise ValueError("CSV does not contain headers")
+
+            for row_number, row in enumerate(reader, start=2):
+                try:
+                    candle = Candle(
+                        symbol=symbol,
+                        timestamp=datetime.strptime(
+                            row["timestamp"],
+                            "%Y-%m-%d %H:%M:%S",
+                        ),
+                        open=float(row["open"]),
+                        high=float(row["high"]),
+                        low=float(row["low"]),
+                        close=float(row["close"]),
+                        volume=int(row["volume"]),
+                    )
+
+                    processor.process(candle)
+                    processed_count += 1
+
+                except (ValueError, TypeError) as exc:
+                    raise ValueError(
+                        f"Invalid data on CSV row {row_number}: {exc}"
+                    ) from exc
+
+        return processed_count
+
+def load_local_data(data_directory: str, processor: CandleProcessor) -> None: 
+    """ Load all CSV files in the data directory """ 
+    data_path = Path(data_directory) 
+    
+    if not data_path.exists(): 
+        raise FileNotFoundError( f"Directory does not exist: {data_directory}" ) 
+    
+    csv_files = sorted(data_path.glob("*.csv")) 
+    if not csv_files: 
+        raise FileNotFoundError( f"No files found in directory: {data_directory}" ) 
+    
+    total_processed = 0 
+    for csv_file in csv_files: 
+        count = load_csv(str(csv_file), processor) 
+        total_processed += count 
+        print( f"Loaded {count} candles for " f"{csv_file.stem.upper()}" ) 
+    
+    print(f"Finished loading {total_processed} candles.")
+
+# TODO: fetch market data from OpenAPI via webull?
+def load_api_data(processor: CandleProcessor) -> None:
+    raise NotImplementedError()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--local", action="store_true")
+    parser.add_argument("--dir", type=str, default="data")
+
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url: 
+        raise ValueError("DATABASE_URL credential required")
+
+    args = parser.parse_args()
+    processor = CandleProcessor(database_url)
+
+    if args.local: load_local_data(args.dir, processor) 
+    else: load_api_data(processor)
