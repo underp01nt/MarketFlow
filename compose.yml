@@ -1,0 +1,31 @@
+services:
+  postgres:
+      image: postgres:16
+      environment:
+        POSTGRES_DB: ${POSTGRES_DB}
+        POSTGRES_USER: ${POSTGRES_USER}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ports:
+        - "5432:5432"
+      volumes:
+        - postgres_data:/var/lib/postgresql/data
+        - ./db/flow.sql:/docker-entrypoint-initdb.d/init.sql
+
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+        interval: 5s
+        timeout: 5s
+        retries: 3
+
+  processor:
+      build:
+        context: .
+        dockerfile: processor/Dockerfile
+      environment:
+        DATABASE_URL: ${DATABASE_URL}
+      depends_on:
+        postgres:
+          condition: service_healthy
+
+volumes:
+  postgres_data:
