@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+WORKDIR /app
+
+COPY pyproject.toml .
+
+RUN pip install --no-cache-dir -e . 
+
+COPY models.py .
+COPY simulator ./simulator
+COPY data ./data
+
+# CMD ["python", "-m", "simulator.feed"]

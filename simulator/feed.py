@@ -25,7 +25,7 @@ class MarketDataFeed:
         """
         Loads candle data from `self.file_path`
         """
-        candles = []
+        candles: list[Candle] = []
 
         with self.file_path.open("r", newline="") as file:
             reader = csv.DictReader(file)
@@ -61,7 +61,7 @@ class MarketDataFeed:
         return candles
 
     @staticmethod
-    def _emit(candle: Candle, curr_bar, prev_bar):
+    def _emit(candle: Candle, curr_bar: float, prev_bar: float):
         print(
             f"{candle.timestamp} |  "
             f"O {candle.open:8.2f} "
@@ -95,7 +95,7 @@ class MarketDataFeed:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--file", default="data/es_1m.csv", help="Path to the market-data CSV")
+    parser.add_argument("--file", default="data/sample_es_1m.csv", help="Path to the market-data CSV")
     parser.add_argument("--interval", type=float, default=1.0, help="Seconds between candles")
     parser.add_argument("--symbol", default="FLOW", type=str)
 
