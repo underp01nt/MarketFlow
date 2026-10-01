@@ -8,6 +8,7 @@ import csv
 import logging
 import os
 import psycopg2
+import time
 
 REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
@@ -77,41 +78,57 @@ def load_csv(file_path: str, processor: CandleProcessor):
         """
         Loads candle data from `self.file_path`
         """
-        processed_count = 0
+        processed_count = 0 
+        start_time = time.monotonic() 
+        logger.info("Starting ingestion file=%s", file_path)
 
-        with open(file_path, "r", newline="") as file:
-            reader = csv.DictReader(file)
+        try:
+            with open(file_path, "r", newline="") as file:
+                reader = csv.DictReader(file)
+                symbol = Path(file_path).stem.upper()
 
-            symbol = Path(file_path).stem.upper()
+                if reader.fieldnames:
+                    missing = REQUIRED_DATA_COLUMNS - set(reader.fieldnames)
+                    if missing:
+                        logger.error("Missing required columns file=%s missing=%s", file_path, sorted(missing))
+                        raise ValueError(f"Missing required columns: {sorted(missing)}")
+                else: 
+                    logger.error("CSV does not contain headers file=%s", file_path)
+                    raise ValueError("CSV does not contain headers")
 
-            if reader.fieldnames:
-                missing = REQUIRED_DATA_COLUMNS - set(reader.fieldnames)
-                if missing:
-                    raise ValueError(f"Missing required columns: {sorted(missing)}")
-            else: raise ValueError("CSV does not contain headers")
+                for row_number, row in enumerate(reader, start=2):
+                    try:
+                        candle = Candle(
+                            symbol=symbol,
+                            timestamp=datetime.strptime(
+                                row["timestamp"],
+                                "%Y-%m-%d %H:%M:%S",
+                            ),
+                            open=float(row["open"]),
+                            high=float(row["high"]),
+                            low=float(row["low"]),
+                            close=float(row["close"]),
+                            volume=int(row["volume"]),
+                        )
 
-            for row_number, row in enumerate(reader, start=2):
-                try:
-                    candle = Candle(
-                        symbol=symbol,
-                        timestamp=datetime.strptime(
-                            row["timestamp"],
-                            "%Y-%m-%d %H:%M:%S",
-                        ),
-                        open=float(row["open"]),
-                        high=float(row["high"]),
-                        low=float(row["low"]),
-                        close=float(row["close"]),
-                        volume=int(row["volume"]),
-                    )
+                        processor.process(candle)
+                        processed_count += 1
 
-                    processor.process(candle)
-                    processed_count += 1
+                    except (ValueError, TypeError) as exc:
+                        logger.error("Invalid CSV data file=%s row=%s error=%s", file_path, row_number, exc)
+                        raise ValueError(f"Invalid data on CSV row {row_number}: {exc}") from exc
 
-                except (ValueError, TypeError) as exc:
-                    raise ValueError(
-                        f"Invalid data on CSV row {row_number}: {exc}"
-                    ) from exc
+        except OSError: 
+            logger.exception("Failed to read CSV file=%s", file_path) 
+            raise
+
+        duration = time.monotonic() - start_time
+        logger.info("CSV ingestion complete file=%s symbol=%s rows=%s duration=%.2fs", 
+                    file_path, 
+                    symbol, 
+                    processed_count, 
+                    duration, 
+        )
 
         return processed_count
 
