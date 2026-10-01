@@ -1,23 +1,36 @@
+from contextlib import contextmanager
 from datetime import datetime
 from models import Candle
 from pathlib import Path
 
 import argparse
 import csv
+import logging
 import os
 import psycopg2
 
 REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
+# implement logger config
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s", )
+logger = logging.getLogger(__name__)
+
 class CandleProcessor:
     def __init__(self, database_url: str):
         self.database_url = database_url
+
+    @contextmanager   # treat get_db_connection yield as connection object
+    def get_db_connection(self):
+        connection = psycopg2.connect(self.database_url)
+        try:
+            with connection: yield connection   # by default: commit if successful, else rollback
+        finally:
+            connection.close()
 
     def process(self, candle: Candle):
         """
         Processes and stores raw candle data in PSQL
         """
-
         query = """
             INSERT INTO candles (symbol, timestamp, open, high, low, close, volume)
             VALUES (
@@ -48,11 +61,17 @@ class CandleProcessor:
             "volume": candle.volume,
         }
 
-        with psycopg2.connect(self.database_url) as connection:
-            with connection.cursor() as cursor:
+        try: 
+            with self.get_db_connection() as connection:
+                cursor = connection.cursor()
                 cursor.execute(query, data)
 
-            connection.commit()
+        except psycopg2.Error:
+            logger.exception(
+                "Database error while processing candle symbol=%s timestamp=%s", 
+                candle.symbol, 
+                candle.timestamp
+            ); raise
 
 def load_csv(file_path: str, processor: CandleProcessor):
         """
