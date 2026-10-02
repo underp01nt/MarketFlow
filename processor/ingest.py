@@ -13,7 +13,7 @@ import time
 REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
 # implement logger config
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s", )
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 class CandleProcessor:
@@ -134,22 +134,33 @@ def load_csv(file_path: str, processor: CandleProcessor):
 
 def load_local_data(data_directory: str, processor: CandleProcessor) -> None: 
     """ Load all CSV files in the data directory """ 
+    logger.info("Starting local data ingestion directory=%s", data_directory)
+
+    start_time = time.monotonic() 
     data_path = Path(data_directory) 
     
-    if not data_path.exists(): 
-        raise FileNotFoundError( f"Directory does not exist: {data_directory}" ) 
+    if not data_path.exists():
+        logger.error("Data could not be found directory=%s", data_directory)
+        raise FileNotFoundError( f"Directory does not exist: {data_directory}") 
     
     csv_files = sorted(data_path.glob("*.csv")) 
     if not csv_files: 
-        raise FileNotFoundError( f"No files found in directory: {data_directory}" ) 
+        logger.error("No CSV files found directory=%s", data_directory)
+        raise FileNotFoundError(f"No files found in directory: {data_directory}") 
     
     total_processed = 0 
     for csv_file in csv_files: 
         count = load_csv(str(csv_file), processor) 
         total_processed += count 
-        print( f"Loaded {count} candles for " f"{csv_file.stem.upper()}" ) 
-    
-    print(f"Finished loading {total_processed} candles.")
+        print(f"Loaded {count} candles for " f"{csv_file.stem.upper()}") 
+
+    duration = time.monotonic() - start_time
+    logger.info( 
+        "Local data ingestion completed " "files=%s rows=%s duration=%.2fs", 
+        len(csv_files), 
+        total_processed, 
+        duration
+    )
 
 # TODO: fetch market data from OpenAPI via webull?
 def load_api_data(processor: CandleProcessor) -> None:
@@ -162,6 +173,7 @@ if __name__ == "__main__":
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url: 
+        logger.critical("Missing DATABASE_URL environment variable")
         raise ValueError("DATABASE_URL credential required")
 
     args = parser.parse_args()
