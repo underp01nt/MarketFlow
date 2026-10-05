@@ -28,7 +28,7 @@ class CandleProcessor:
         finally:
             connection.close()
 
-    def process(self, candle: Candle):
+    def process(self, candle: Candle, connection):
         """
         Processes and stores raw candle data in PSQL
         """
@@ -63,8 +63,7 @@ class CandleProcessor:
         }
 
         try: 
-            with self.get_db_connection() as connection:
-                cursor = connection.cursor()
+            with connection.cursor() as cursor:
                 cursor.execute(query, data)
 
         except psycopg2.Error:
@@ -75,27 +74,28 @@ class CandleProcessor:
             ); raise
 
 def load_csv(file_path: str, processor: CandleProcessor):
-        """
-        Loads candle data from `self.file_path`
-        """
-        processed_count = 0 
-        start_time = time.monotonic() 
-        logger.info("Starting ingestion file=%s", file_path)
+    """
+    Loads candle data from a CSV file
+    """
+    processed_count = 0 
+    start_time = time.monotonic() 
+    logger.info("Starting ingestion file=%s", file_path)
 
-        try:
-            with open(file_path, "r", newline="") as file:
-                reader = csv.DictReader(file)
-                symbol = Path(file_path).stem.upper()
+    try:
+        with open(file_path, "r", newline="") as file:
+            reader = csv.DictReader(file)
+            symbol = Path(file_path).stem.upper()
 
-                if reader.fieldnames:
-                    missing = REQUIRED_DATA_COLUMNS - set(reader.fieldnames)
-                    if missing:
-                        logger.error("Missing required columns file=%s missing=%s", file_path, sorted(missing))
-                        raise ValueError(f"Missing required columns: {sorted(missing)}")
-                else: 
-                    logger.error("CSV does not contain headers file=%s", file_path)
-                    raise ValueError("CSV does not contain headers")
+            if reader.fieldnames:
+                missing = REQUIRED_DATA_COLUMNS - set(reader.fieldnames)
+                if missing:
+                    logger.error("Missing required columns file=%s missing=%s", file_path, sorted(missing))
+                    raise ValueError(f"Missing required columns: {sorted(missing)}")
+            else: 
+                logger.error("CSV does not contain headers file=%s", file_path)
+                raise ValueError("CSV does not contain headers")
 
+            with processor.get_db_connection() as connection:
                 for row_number, row in enumerate(reader, start=2):
                     try:
                         candle = Candle(
@@ -111,29 +111,31 @@ def load_csv(file_path: str, processor: CandleProcessor):
                             volume=int(row["volume"]),
                         )
 
-                        processor.process(candle)
+                        processor.process(candle, connection)
                         processed_count += 1
 
                     except (ValueError, TypeError) as exc:
                         logger.error("Invalid CSV data file=%s row=%s error=%s", file_path, row_number, exc)
                         raise ValueError(f"Invalid data on CSV row {row_number}: {exc}") from exc
 
-        except OSError: 
-            logger.exception("Failed to read CSV file=%s", file_path) 
-            raise
+    except OSError: 
+        logger.exception("Failed to read CSV file=%s", file_path) 
+        raise
 
-        duration = time.monotonic() - start_time
-        logger.info("CSV ingestion complete file=%s symbol=%s rows=%s duration=%.2fs", 
-                    file_path, 
-                    symbol, 
-                    processed_count, 
-                    duration, 
-        )
+    duration = time.monotonic() - start_time
+    logger.info("CSV ingestion complete file=%s symbol=%s rows=%s duration=%.2fs", 
+                file_path, 
+                symbol, 
+                processed_count, 
+                duration, 
+    )
 
-        return processed_count
+    return processed_count
 
 def load_local_data(data_directory: str, processor: CandleProcessor) -> None: 
-    """ Load all CSV files in the data directory """ 
+    """ 
+    Loads all CSV files in the data directory 
+    """ 
     logger.info("Starting local data ingestion directory=%s", data_directory)
 
     start_time = time.monotonic() 
@@ -151,8 +153,7 @@ def load_local_data(data_directory: str, processor: CandleProcessor) -> None:
     total_processed = 0 
     for csv_file in csv_files: 
         count = load_csv(str(csv_file), processor) 
-        total_processed += count 
-        print(f"Loaded {count} candles for " f"{csv_file.stem.upper()}") 
+        total_processed += count
 
     duration = time.monotonic() - start_time
     logger.info( 
