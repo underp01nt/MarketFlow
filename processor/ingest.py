@@ -12,8 +12,7 @@ import time
 
 REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
 
-# implement logger config
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+# get logger config name
 logger = logging.getLogger(__name__)
 
 class CandleProcessor:
