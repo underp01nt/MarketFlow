@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir -e .
 
 COPY models.py .
 COPY processor ./processor
+COPY logging_config.py .
 COPY data ./data
 
-CMD ["python", "-m", "processor.ingest", "--local"]
+CMD ["python", "-m", "processor.service"]

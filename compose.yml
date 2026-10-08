@@ -26,6 +26,17 @@ services:
       depends_on:
         postgres:
           condition: service_healthy
+      ports:
+        - "8000:8000"
+      healthcheck: 
+        test: [
+          "CMD", "python", "-c", 
+          "import requests; requests.get('http://127.0.0.1:8080/health', timeout=2)" 
+        ]
+        interval: 10s 
+        timeout: 3s 
+        retries: 3
+        start_period: 10s
 
 volumes:
   postgres_data:

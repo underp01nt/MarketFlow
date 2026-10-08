@@ -13,6 +13,7 @@ dependencies = [
     "requests",
     "fastapi",
     "uvicorn[standard]",
+    "requests",
 ]
 
 [tool.setuptools.packages.find]
