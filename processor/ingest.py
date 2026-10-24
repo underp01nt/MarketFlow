@@ -72,9 +72,11 @@ class CandleProcessor:
                 candle.timestamp
             ); raise
 
-def load_csv(file_path: str, processor: CandleProcessor):
+def load_csv(file_path: str, processor: CandleProcessor) -> int:
     """
     Loads candle data from a CSV file
+    
+    Returns: **count of processed candles**
     """
     processed_count = 0 
     start_time = time.monotonic() 

@@ -23,6 +23,9 @@ services:
         dockerfile: processor/Dockerfile
       environment:
         DATABASE_URL: ${DATABASE_URL}
+        AWS_PROFILE: ${AWS_PROFILE}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        SQS_QUEUE_URL: ${SQS_QUEUE_URL}
       depends_on:
         postgres:
           condition: service_healthy
@@ -31,12 +34,31 @@ services:
       healthcheck: 
         test: [
           "CMD", "python", "-c", 
-          "import requests; requests.get('http://127.0.0.1:8080/health', timeout=2)" 
+          "import requests; requests.get('http://127.0.0.1:8000/health', timeout=2)" 
         ]
         interval: 10s 
         timeout: 3s 
         retries: 3
         start_period: 10s
+      volumes:
+        - "${USERPROFILE}/.aws:/root/.aws:ro"
+
+  worker:
+      build:
+        context: .
+        dockerfile: processor/Dockerfile
+      command: ["python", "-m", "processor.worker"]
+      environment:
+        DATABASE_URL: ${DATABASE_URL}
+        AWS_PROFILE: ${AWS_PROFILE}
+        AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+        SQS_QUEUE_URL: ${SQS_QUEUE_URL}
+      depends_on:
+        postgres:
+          condition: service_healthy
+      restart: unless-stopped
+      volumes:
+        - "${USERPROFILE}/.aws:/root/.aws:ro"
 
 volumes:
   postgres_data:

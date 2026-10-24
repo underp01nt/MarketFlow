@@ -14,6 +14,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "requests",
+    "boto3",
 ]
 
 [tool.setuptools.packages.find]
