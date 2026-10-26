@@ -10,4 +10,4 @@ COPY processor ./processor
 COPY logging_config.py .
 COPY data ./data
 
-CMD ["python", "-m", "processor.service"]
+CMD ["python", "-m", "processor.health"]

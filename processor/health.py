@@ -1,9 +1,16 @@
+"""
+Configures database health service API
+
+"""
+
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from logging_config import setup_logging
 
 import logging
 import os
 import psycopg2
+import uvicorn
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="MarketFlow data processing service health API")
@@ -58,3 +65,12 @@ def readiness() -> JSONResponse:
         status_code=200,
         content={"status": "ready"},
     )
+
+def main() -> None:
+    setup_logging()
+
+    logger.info("Starting MarketFlow service")
+    uvicorn.run("processor.health:app", host="0.0.0.0", port=8000, log_level="info")
+
+if __name__ == "__main__":
+    main()
