@@ -5,7 +5,7 @@ To poll, validate, and store SQS message into DB before deletion
 
 from botocore.exceptions import BotoCoreError, ClientError
 from models import Candle
-from main.processor.ingest import CandleProcessor
+from main.ingestion import CandleProcessor
 from pydantic import ValidationError
 from threading import Event
 
