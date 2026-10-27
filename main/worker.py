@@ -5,7 +5,7 @@ To poll, validate, and store SQS message into DB before deletion
 
 from botocore.exceptions import BotoCoreError, ClientError
 from models import Candle
-from processor.ingest import CandleProcessor
+from main.processor.ingest import CandleProcessor
 from pydantic import ValidationError
 from threading import Event
 
@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import signal
-import time
 
 # if worker asked to stop, call for shutdown
 shutdown = Event()
@@ -37,7 +36,7 @@ def start_SQS_worker():
     queue_url = os.environ["SQS_QUEUE_URL"]
     region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
-    # create SQS client with configured AWS credentials
+    # checks environment vars internally for AWS credentials before creating SQS client
     sqs = boto3.client("sqs", region_name=region)
     processor = CandleProcessor(database_url=os.environ["DATABASE_URL"])
 
@@ -61,18 +60,23 @@ def start_SQS_worker():
                     with processor.get_db_connection() as connection:
                         processor.process(candle, connection)
 
+                    # if DB transaction passes, delete the message
                     sqs.delete_message(
                         QueueUrl=queue_url,
                         ReceiptHandle=message["ReceiptHandle"],
                     )
-                    logger.info("Processed candle: %s", candle.symbol)
+                    logger.info(
+                        "Message processed successfully: timestamp=%s symbol=%s",
+                        candle.timestamp.isoformat(),
+                        candle.symbol,
+                    )
 
-                except (json.JSONDecodeError, ValidationError):
+                except (json.JSONDecodeError, ValidationError) as exc:
                     # leave invalid messages for SQS redrive to the DLQ
-                    logger.exception("Invalid candle message")
+                    logger.error("Invalid candle message: %s", exc)
 
                 except Exception:
-                    logger.exception("Message processing failed")
+                    logger.exception("Processing failed, message retained")
 
         except (BotoCoreError, ClientError):
             logger.exception("SQS request failed")
