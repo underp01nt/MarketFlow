@@ -17,10 +17,11 @@ services:
         timeout: 5s
         retries: 3
 
-  processor:
+  health-api:
       build:
         context: .
-        dockerfile: processor/Dockerfile
+        dockerfile: Dockerfile
+      command: ["python", "-m", "main.health"]
       environment:
         DATABASE_URL: ${DATABASE_URL}
         AWS_PROFILE: ${AWS_PROFILE}
@@ -40,14 +41,12 @@ services:
         timeout: 3s 
         retries: 3
         start_period: 10s
-      volumes:
-        - "${USERPROFILE}/.aws:/root/.aws:ro"
 
   worker:
       build:
         context: .
-        dockerfile: processor/Dockerfile
-      command: ["python", "-m", "processor.worker"]
+        dockerfile: Dockerfile
+      command: ["python", "-m", "main.worker"]
       environment:
         DATABASE_URL: ${DATABASE_URL}
         AWS_PROFILE: ${AWS_PROFILE}
@@ -58,8 +57,6 @@ services:
           condition: service_healthy
       restart: unless-stopped
       stop_grace_period: 30s    # give time to stop worker for graceful shutdown
-      volumes:
-        - "${USERPROFILE}/.aws:/root/.aws:ro"
 
 volumes:
   postgres_data:
