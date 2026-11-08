@@ -15,6 +15,7 @@ dependencies = [
     "uvicorn[standard]",
     "requests",
     "boto3",
+    "webull-openapi-python-sdk",
 ]
 
 [tool.setuptools.packages.find]
