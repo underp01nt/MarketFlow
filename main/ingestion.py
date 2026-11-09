@@ -1,67 +1,79 @@
-from contextlib import contextmanager
+from datetime import date, datetime, timezone
 from models import Candle
 
+import boto3
+import json
 import logging
-import psycopg2
-
-REQUIRED_DATA_COLUMNS = {"timestamp", "open", "high", "low", "close", "volume"}
+import os
+import uuid
 
 # get logger config name
 logger = logging.getLogger(__name__)
+BUCKET = "marketflow-data"
 
-class CandleProcessor:
-    def __init__(self, database_url: str):
-        self.database_url = database_url
+class S3CandleWriter:
+    def __init__(self, bucket: str = BUCKET):
+        # configure basic bucket + s3 config
+        self.bucket = bucket
+        self.run_id = str(uuid.uuid4())
+        self.region = os.getenv("AWS_REGION", "us-east-1")
+        self.s3 = boto3.client("s3", region_name=self.region)
 
-    @contextmanager   # treat get_db_connection yield as connection object
-    def get_db_connection(self):
-        connection = psycopg2.connect(self.database_url)
-        try:
-            yield connection
-        finally:
-            connection.close()
+        # some relevant candle metadata
+        self.candle_count = 0
+        self.symbols: set[str] = set()
 
-    def process(self, candle: Candle, connection):
+    def upload_batch(self, candles: list[Candle], trading_date: date) -> list[str]:
         """
-        Processes and stores raw candle data in PSQL
+        Adds today's available candle batch to S3
         """
-        query = """
-            INSERT INTO candles (symbol, timestamp, open, high, low, close, volume)
-            VALUES (
-                %(symbol)s,
-                %(timestamp)s,
-                %(open)s,
-                %(high)s,
-                %(low)s,
-                %(close)s,
-                %(volume)s
+        if not candles:
+            return []
+
+        # group candles by their associated symbol
+        grouped_candles: dict[str, list[Candle]] = {}
+
+        # {"symbolA": list[Candle], ...}
+        for candle in candles:
+            grouped_candles.setdefault(candle.symbol, []).append(candle)
+
+        timestamp = datetime.now(timezone.utc)
+        timestamp_label = timestamp.strftime("%Y%m%dT%H%M%S%fZ")
+
+        uploaded_keys = []
+        for symbol, symbol_candles in grouped_candles.items():
+            records = [
+                {
+                    "symbol": candle.symbol,
+                    "timestamp": candle.timestamp.isoformat(),
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in symbol_candles
+            ]
+
+            # form the body and the key with the candles data before adding object to s3 bucket
+            body = "\n".join(json.dumps(record, default=str) for record in records) + "\n"
+            key = (
+                f"candles/{trading_date.isoformat()}/{symbol}/"
+                f"batch={self.run_id}-{timestamp_label}.jsonl"
             )
-            ON CONFLICT (symbol, timestamp)
-            DO UPDATE SET
-                open = EXCLUDED.open,
-                high = EXCLUDED.high,
-                low = EXCLUDED.low,
-                close = EXCLUDED.close,
-                volume = EXCLUDED.volume;
-        """
 
-        data = {
-            "symbol": candle.symbol,
-            "timestamp": candle.timestamp,
-            "open": candle.open,
-            "high": candle.high,
-            "low": candle.low,
-            "close": candle.close,
-            "volume": candle.volume,
-        }
+            self.s3.put_object(Bucket=self.bucket, Key=key, 
+                Body=body.encode("utf-8"),
+                ContentType="application/x-ndjson",
+            )
 
-        try: 
-            with connection.cursor() as cursor:
-                cursor.execute(query, data)
+            uploaded_keys.append(key)
+            self.symbols.add(symbol)
+            self.candle_count += len(symbol_candles)
 
-        except psycopg2.Error:
-            logger.exception(
-                "Database error while processing candle symbol=%s timestamp=%s", 
-                candle.symbol, 
-                candle.timestamp
-            ); raise
+            logger.info(
+                "Uploaded %s candles for %s to s3://%s/%s",
+                len(symbol_candles), symbol, self.bucket, key
+            )
+
+        return uploaded_keys
