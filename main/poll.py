@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-from main.ingestion import CandleProcessor
+from zoneinfo import ZoneInfo
+
 from models import Candle
+from main.ingestion import S3CandleWriter
 from webull.core.client import ApiClient
 from webull.data.common.category import Category
 from webull.data.common.timespan import Timespan
@@ -23,8 +25,13 @@ load_dotenv()
 SYMBOLS = ["AAPL"]
 INTERVAL = 5   # x-min interval
 DELAY = 2      # seconds to finalize closing bar 
-COUNT = 2      # number of closed candles to return since the worker started
-DATABASE_URL = os.environ["DATABASE_URL"]
+COUNT = 5      # number of latest candles to return
+
+# relevant S3 configs
+BUCKET = os.getenv("S3_BUCKET", "marketflow-data")
+EASTERN = ZoneInfo("America/New_York")
+SESSION_START = datetime.strptime("09:30", "%H:%M").time()
+SESSION_END = datetime.strptime("11:00", "%H:%M").time()
 
 def create_data_client() -> DataClient:
     # create the API client
@@ -67,38 +74,65 @@ def fetch_bar(data_client: DataClient, symbols: list[str], count: int = COUNT) -
         category=Category.US_STOCK.name,
         timespan=Timespan.M5.name,  # 5m candle data
         count=str(count),
-        trading_sessions=["PRE", "RTH", "ATH"],
+        trading_sessions=["RTH"],
         real_time_required=True,
     )
     res.raise_for_status()
     return parse_candles(res.json())
 
 def run(data_client):
+    # configure writer and date
+    writer = S3CandleWriter(bucket=BUCKET)
+    trading_date = datetime.now(EASTERN).date()
+
+    if datetime.now(EASTERN).time() < SESSION_START:
+        logger.error("Task started before the scheduled session")
+        return
+
+    if datetime.now(EASTERN).time() >= SESSION_END:
+        logger.info("Trading session has already ended")
+        return
+    
     step = INTERVAL * 60
     last_acted: dict[str, datetime] = {}
-    candle_processor = CandleProcessor(DATABASE_URL)
+    while True:
+        now = datetime.now(timezone.utc)
+        
+        # get closest 5m interval registered 
+        forming = now.replace(minute=now.minute - (now.minute % INTERVAL), second=0, microsecond=0)
 
-    with candle_processor.get_db_connection() as conn:
-        while True:
-            now = datetime.now(timezone.utc)
-            # get closest 5m interval registered 
-            forming = now.replace(minute=now.minute - (now.minute % INTERVAL), second=0, microsecond=0)
+        try:
+            eligible_candles = []
 
-            try:
-                for candle in fetch_bar(data_client, SYMBOLS):
-                    # drop any registered or forming bar  
-                    if last_acted.get(candle.symbol) == candle.timestamp or candle.timestamp >= forming:
-                        continue
+            for candle in fetch_bar(data_client, SYMBOLS):
+                # only process completed candles from today's RTH session
+                candle_time = candle.timestamp.astimezone(EASTERN)
+                if (
+                        candle_time.date() != trading_date 
+                    or candle_time.time() < SESSION_START
+                    or candle_time.time() >= SESSION_END 
+                    or candle.timestamp >= forming): continue
 
-                    # run trading strategy here
-                    
-                    # save candle for persistence
-                    with conn:
-                        candle_processor.process(candle, conn)
+                # consume newest candle, do not register uploaded old candles
+                last_timestamp = last_acted.get(candle.symbol)
+                if last_timestamp is not None and candle.timestamp <= last_timestamp:
+                    continue
+
+                eligible_candles.append(candle)
+
+                """  !! run trading strategy here !!  """
+                
+            # upload batch of candle data to S3
+            if eligible_candles:
+                eligible_candles.sort(key=lambda candle: (candle.symbol, candle.timestamp))
+                
+                _ = writer.upload_batch(eligible_candles, trading_date)
+
+                for candle in eligible_candles:
                     last_acted[candle.symbol] = candle.timestamp
 
                     logger.info(
-                        "Successfully inserted candle: %s %s %s %s %s %s %s",
+                        "Successfully uploaded candle: %s %s %s %s %s %s %s",
                         candle.symbol,
                         candle.timestamp,
                         candle.open,
@@ -108,14 +142,21 @@ def run(data_client):
                         candle.volume,
                     )
 
-            except Exception:
-                logger.exception("Polling cycle failed; retrying next cycle")
+        except Exception:
+            logger.exception("Polling cycle failed; retrying next cycle")
 
-            time.sleep(step - (time.time() % step) + DELAY)   # wait for next 5m boundary
+        deadline = datetime.combine(trading_date, SESSION_END, tzinfo=EASTERN) + timedelta(seconds=DELAY)
+        # run until end of trading session
+        if datetime.now(EASTERN) >= deadline: break
+        # otherwise, wait for next 5m boundary
+        time.sleep(step - (time.time() % step) + DELAY)   
+
+    logger.info(
+        "Polling session completed | total candles uploaded: %s; symbols: %s",
+        writer.candle_count,
+        sorted(writer.symbols),
+    )
 
 if __name__ == "__main__":
-    try: 
-        data_client = create_data_client()
-        run(data_client)
-    except KeyboardInterrupt:
-        print("Terminating program...")
+    data_client = create_data_client()
+    run(data_client)

@@ -7,12 +7,8 @@ name = "MarketFlow"
 version = "0.0.1"
 requires-python = ">=3.10"
 dependencies = [
-    "psycopg2-binary",
     "pydantic",
     "python-dotenv",
-    "requests",
-    "fastapi",
-    "uvicorn[standard]",
     "requests",
     "boto3",
     "webull-openapi-python-sdk",
@@ -20,4 +16,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["db*", "data", "processor"]
+include = ["main"]

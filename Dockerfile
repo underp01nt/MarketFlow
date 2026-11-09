@@ -7,3 +7,5 @@ RUN pip install --no-cache-dir -e .
 
 COPY models.py .
 COPY main ./main
+
+CMD ["python", "-m", "main.poll"]
