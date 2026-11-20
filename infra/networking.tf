@@ -1,5 +1,10 @@
 ### terraform config file to group network resources
 
+# fetch available AWS zones
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 # creates a VPC with default range defined by vpc_cidr
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
