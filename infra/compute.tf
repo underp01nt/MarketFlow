@@ -31,7 +31,7 @@ resource "aws_ecs_task_definition" "poller" {
   }
 
   depends_on = [
-    aws_iam_role_policy_attachment.execution_managed,
+    aws_iam_role_policy_attachment.execution,
     aws_iam_role_policy.execution_secrets,
     aws_iam_role_policy.task_s3
   ]
