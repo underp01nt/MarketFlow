@@ -11,20 +11,10 @@ variable "vpc_cidr" {
 
 
 
-#  Secrets/self declarable
+#  Secrets/self declarables
 variable "webull_secret_name" {
   type        = string
   default     = "marketflow/webull"
-}
-
-variable "webull_app_key" {
-  type        = string
-  sensitive   = true
-}
-
-variable "webull_app_secret" {
-  type        = string
-  sensitive   = true
 }
 
 variable "s3_bucket_name" {

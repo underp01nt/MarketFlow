@@ -42,7 +42,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
   }
 }
 
-# blocks market data from exiting out to public network
+# prevent public access to S3 bucket
 resource "aws_s3_bucket_public_access_block" "data" {
   bucket                  = aws_s3_bucket.data.id
   block_public_acls       = true
@@ -54,14 +54,4 @@ resource "aws_s3_bucket_public_access_block" "data" {
 # creates a secret in Secrets Manager
 resource "aws_secretsmanager_secret" "webull" {    # aws_secretsmanager_secret.webull
   name = var.webull_secret_name
-}
-
-# store credentials in the secret as JSON
-resource "aws_secretsmanager_secret_version" "webull" {
-  secret_id = aws_secretsmanager_secret.webull.id
-
-  secret_string = jsonencode({
-    WEBULL_APP_KEY    = var.webull_app_key
-    WEBULL_APP_SECRET = var.webull_app_secret
-  })
 }
