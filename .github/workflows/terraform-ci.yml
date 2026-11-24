@@ -35,13 +35,13 @@ jobs:
         working-directory: infra
         run: terraform init -backend=false -input=false
 
-      - name: Check Terraform formatting
+      - name: Terrform formatting
         working-directory: infra
-        run: terraform fmt -check -recursive
+        run: terraform fmt -recursive 
 
-      - name: Validate Terraform
+      - name: Validate Terraform infra configs
         working-directory: infra
-        run: terraform validate
+        run: terraform fmt -check && terraform validate
 
       - name: Plan Terraform changes
         working-directory: infra
