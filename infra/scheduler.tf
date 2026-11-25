@@ -33,7 +33,7 @@ data "aws_iam_policy_document" "scheduler_run_task" {
       test     = "ArnEquals"
       variable = "ecs:cluster"
 
-      values = [aws_ecs_cluster.marketflow.arn]
+      values = [aws_ecs_cluster.main.arn]
     }
   }
 
@@ -75,7 +75,7 @@ resource "aws_scheduler_schedule" "marketflow" {
   }
 
   target {
-    arn      = aws_ecs_cluster.marketflow.arn
+    arn      = aws_ecs_cluster.main.arn
     role_arn = aws_iam_role.scheduler.arn
 
     ecs_parameters {
@@ -85,7 +85,7 @@ resource "aws_scheduler_schedule" "marketflow" {
 
       network_configuration {
         subnets          = aws_subnet.public[*].id
-        security_groups  = [aws_security_group.ecs.id]
+        security_groups  = [aws_security_group.poller.id]
         assign_public_ip = true
       }
     }
